@@ -59,6 +59,12 @@ template<int n1,int n2> vec<n1> proj(const vec<n2> &v) {
     return ret;
 }
 
+template<int n> vec<n> operator-(const vec<n> & rhs){
+    vec<n> ret;
+    for(int i=n;i--;ret[i]=-rhs[i]);
+    return ret;
+}
+
 template<int n> std::ostream& operator<<(std::ostream& out, const vec<n>& v) {
     for (int i=0; i<n; i++) out << v[i] << " ";
     return out;

@@ -27,12 +27,18 @@ const TGAColor white = {255, 255, 255};
 const TGAColor red = {255, 0, 0};
 const TGAColor green = {0, 255, 0};
 const TGAColor blue = {0, 0, 255};
-vec3 lightsource_direction = {0, 0, -1}; // will be reduce to normal vector later
+vec3 lightsource_direction = {-1, -1, -1}; // will be reduce to normal vector later
 vec3 camera_coord = {1, 1, 3};
 vec3 center = {0, 0, 0};
 vec3 up = {0, 1, 0};
 double intensity = 1;
 double contrast = 1;
+double ambientcolor = 5; // TGAColor{5,5,5}
+double specularstrength_scale = 0.2;
+mat<4, 4> Projection;
+mat<4, 4> Viewport;
+mat<4, 4> Modelview;
+
 
 void draw_line(int x0, int y0, int x1, int y1, TGAImage *image, TGAImage *diffuse, const TGAColor &color)
 {
@@ -157,11 +163,11 @@ mat<4, 4> lookat(vec3 eye, vec3 center, vec3 up)
       model[2][i] = z[i];
       view[i][3] = -center[i];
    }
-   cout << model*view << endl;
+   // cout << model*view << endl;
    return model*view;
 }
 
-void triangle(vec3 *vertices, vec3 *texturecoord, vec3 *normvec, double *zbuffer, TGAImage *image, TGAImage &diffusemap, TGAImage &specularmap, const Model &model)
+void triangle(vec3 *vertices, vec3 *texturecoords, vec3 *normvecs, double *zbuffer, TGAImage *image, TGAImage &diffusemap, TGAImage &specularmap, const Model &model)
 {
    double imgw = (double)image->width();
    double imgh = (double)image->height();
@@ -185,6 +191,7 @@ void triangle(vec3 *vertices, vec3 *texturecoord, vec3 *normvec, double *zbuffer
          vec2 P = {x, y};
          vec3 barycentricvec = barycentric(P, vertices);
 
+         
          // calculating current pixel depth (z-axis)
          // calculating the corresponding color coordinate (x,y) of texture (diffuse)
          // calculating shading strength
@@ -194,31 +201,29 @@ void triangle(vec3 *vertices, vec3 *texturecoord, vec3 *normvec, double *zbuffer
          for (int i = 0; i < 3; i++)
          {
             z += barycentricvec[i] * vertices[i][2];
-            colorcoord = colorcoord + barycentricvec[i] * texturecoord[i];
-            // normalvector = normalvector + barycentricvec[i] * normvec[i];
+            colorcoord = colorcoord + barycentricvec[i] * texturecoords[i];
+            normalvector = normalvector + barycentricvec[i] * normvecs[i];
          }
+
+         // check zbuffer soon as possible
+         int index = x + y * imgw;
+         if (index < 0 || index >= imageh * imagew || barycentricvec.x < 0 || barycentricvec.y < 0 || barycentricvec.z < 0 || zbuffer[index] >= z)
+            continue;
+
+         zbuffer[index] = z;
+
          // raise contrast base on contrast
-         normalvector = model.normal(colorcoord);
-         normalvector = normalvector * contrast;
-
-         
-
-         // shadingvector = normalvector * contrast;
-         TGAColor color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
-
-         // get specular
-         TGAColor specularcolor = specularmap.get(colorcoord.x, colorcoord.y);
-         vec3 specularvec = ((normalvector * (vec3{0, 0, 0} - lightsource_direction)) * normalvector * 2).normalized();
-         double specularstrength = pow(specularvec * camera_coord.normalized(), specularcolor[0]);
-
-         if (specularstrength < 0)
-            specularstrength = 0;
-         if (specularstrength > 1)
-            specularstrength = 1;
+         normalvector = normalvector.normalized() * contrast;
 
          // if face the light (strength increace)
          // raise intensity of light base on intensity
-         double strength = -(normalvector * lightsource_direction.normalized()) * intensity;
+         mat<3,3> A = mat<3,3>{texturecoords[1] - texturecoords[0], texturecoords[2] - texturecoords[0], normalvector}.transpose();
+         mat<3,3> AI = A.invert();
+         vec<3> i = AI * vec<3>{texturecoords[1] - texturecoords[0]};
+         vec<3> j = AI * vec<3>{texturecoords[2] - texturecoords[0]};
+         mat<3,3> B = mat<3,3>{i,j,normalvector}.transpose();
+         vec<3> n = (B*model.normal(colorcoord)).normalized();
+         double strength = -(n * lightsource_direction.normalized()) * intensity;
 
          // if strength is less than 0, handle limit of scaling color
          // if strength greater than 1, handle limit of scaling color
@@ -227,22 +232,28 @@ void triangle(vec3 *vertices, vec3 *texturecoord, vec3 *normvec, double *zbuffer
          if (strength > 1)
             strength = 1;
 
-         int index = x + y * imgw;
-         if (index < 0 || index >= imageh * imagew || barycentricvec.x < 0 || barycentricvec.y < 0 || barycentricvec.z < 0 || zbuffer[index] >= z)
-            continue;
+         // get specular
+         vec3 uniform_l = proj<3,4>(Projection*Modelview*embed<4,3>(lightsource_direction,1));
+         TGAColor specularcolor = specularmap.get(colorcoord.x, colorcoord.y);
+         vec3 specularvec = ((n * -uniform_l * 2.) * n + uniform_l).normalized();
+         double specularstrength = pow(specularvec * camera_coord.normalized(), 5 + specularcolor[0]);
+         // double specularstrength = pow(specularvec.z, 5 + specularcolor[0]);
 
-         zbuffer[index] = z;
+         if (specularstrength < 0)
+            specularstrength = 0;
+         if (specularstrength > 1){
+            specularstrength = 1;
+         }
+         
 
+         TGAColor color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
          // uncomment this to see the shading more clear
          // color = {255, 255, 255};
-
-         double ambientcolor = 5; // TGAColor{5,5,5}
-         double specularstrength_scale = 0.4;
 
          for (int i = 0; i < 3; i++)
          {
             color[i] *= strength;
-            color[i] = (min<double>(255., color[i] + 255. * specularstrength * specularstrength_scale + ambientcolor));
+            color[i] = max<double>(0,(min<double>(255., color[i] + 255. * specularstrength * specularstrength_scale + ambientcolor)));
          }
 
          image->set(x, y, color);
@@ -269,10 +280,10 @@ int main(int argc, char **argv)
    vec3 texvertices[3];
    vec3 normvecs[3];
 
-   mat<4, 4> Projection = mat<4, 4>::identity();
+   Projection = mat<4, 4>::identity();
    Projection[3][2] = -1 / camera_coord.z;
-   mat<4, 4> Viewport = viewport(imagew *  1/ 8, imageh* 1 / 8, imagew * 3/4, imageh * 3/4);
-   mat<4, 4> Modelview = lookat(camera_coord, center, up);
+   Viewport = viewport(imagew *  1/ 8, imageh* 1 / 8, imagew * 3/4, imageh * 3/4);
+   Modelview = lookat(camera_coord, center, up);
 
    for (int i = 0; i < model->nfaces(); i++)
    {
