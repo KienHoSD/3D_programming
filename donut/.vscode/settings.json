@@ -1,7 +1,0 @@
-{
-  "files.associations": {
-    "*.sage": "python",
-    "*.cpp": "cpp",
-    "cmath": "cpp"
-  }
-}

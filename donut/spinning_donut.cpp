@@ -67,7 +67,7 @@ float calculateZ(float i, float j, float k, float A = A, float B = B, float C = 
          i * sin(B);
 }
 
-void drawing2ndCircleAroundCoordinate(float circleX, float circleY, float circleZ, float angle, float size1stcircle, char ch = NULL)
+void drawing2ndCircleAroundCoordinate(float circleX, float circleY, float circleZ, float angle, float size1stcircle, char ch = 0)
 {
   float circleX2, circleY2, circleZ2;
   float circle2X, circle2Y, circle2Z;

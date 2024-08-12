@@ -9,12 +9,12 @@ const int width = 160, height = 44; // Width and height of the terminal window
 float zBuffer[160 * 44];            // Z-buffer for depth calculations
 char buffer[160 * 44];              // Buffer for storing ASCII characters
 int backgroundASCIICode = ' ';      // ASCII character for the background
-int distanceFromCam = 150;          // Distance from the camera to the cube
+int distanceFromCam = 230;          // Distance from the camera to the cube
 float horizontalOffset = 0;         // Horizontal offset for projection
 float K1 = 70;                      // Projection constant
-float incrementSpeed = 0.02;        // Rotation speed (adjust as needed)
 float density = 20;                 // density of calculating (preventing of not filling the whole plane with ch, also increase projection)
-float increase_dens = 0.5;            // same as above, but less mean more density without increasing the projection
+float increase_dens = 0.5;          // same as above, but less mean more density without increasing the projection
+float incrementSpeed = 0.02;        // Rotation speed (adjust as needed)
 
 float x, y, z; // 3D coordinates
 float ooz;     // One over z (reciprocal of z)
@@ -93,7 +93,7 @@ int main()
     // Rotate the cube
     A += incrementSpeed;
     B += incrementSpeed;
-    C += 0;
+    C += incrementSpeed/2;
 
     // Render the cubes
     for (float cubeX = -density; cubeX < density; cubeX += increase_dens)
