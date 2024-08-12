@@ -1,1 +1,1 @@
-https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L5_2_moving_the_camera/tga.jpg
+![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L5_2_moving_the_camera/tga.jpg)
