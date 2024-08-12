@@ -157,7 +157,6 @@ mat<4, 4> lookat(vec3 eye, vec3 center, vec3 up)
       model[2][i] = z[i];
       view[i][3] = -center[i];
    }
-   cout << model*view << endl;
    return model*view;
 }
 

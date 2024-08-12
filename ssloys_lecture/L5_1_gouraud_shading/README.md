@@ -1,0 +1,1 @@
+https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L5_1_gouraud_shading/tga.jpg

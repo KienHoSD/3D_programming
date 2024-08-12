@@ -27,11 +27,11 @@ const TGAColor red = {255, 0, 0};
 const TGAColor green = {0, 255, 0};
 const TGAColor blue = {0, 0, 255};
 vec3 lightsource_direction = {-3, -1, -1}; // will be reduce to normal vector later
-vec3 camera_coord = {-1, 1, 3};
+vec3 camera_coord = {1, 1, 3};
 vec3 center = {0, 0, 0};
 vec3 up = {0, 1, 0};
-double intensity = 2;
-double contrast = 3;
+double intensity = 1;
+double contrast = 1;
 
 void draw_line(int x0, int y0, int x1, int y1, TGAImage *image, TGAImage *diffuse, const TGAColor &color)
 {
@@ -218,8 +218,8 @@ vec3 ROUND_VECTOR(const vec3 &vec)
 mat<4, 4> lookat(vec3 eye, vec3 center, vec3 up)
 {
    vec3 z = (eye - center).normalized();
-   vec3 x = cross(z, up).normalized();
-   vec3 y = cross(x, z).normalized();
+   vec3 x = cross(up, z).normalized();
+   vec3 y = cross(z, x).normalized();
    mat<4, 4> res = mat<4, 4>::identity();
    for (int i = 0; i < 3; i++)
    {
