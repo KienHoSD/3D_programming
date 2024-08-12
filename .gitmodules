@@ -1,0 +1,6 @@
+[submodule "ssloys_lecture/ssloys_lecture"]
+	path = ssloys_lecture/ssloys_lecture
+	url = https://github.com/ssloy/tinyrenderer
+[submodule "ssloys_lecture/tinyrenderer"]
+	path = ssloys_lecture/tinyrenderer
+	url = https://github.com/ssloy/tinyrenderer
