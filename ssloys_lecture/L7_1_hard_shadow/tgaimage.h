@@ -26,6 +26,12 @@ struct TGAColor {
     std::uint8_t& operator[](const int i) { return bgra[i]; }
 };
 
+inline std::ostream& operator<<(std::ostream& out, const TGAColor& color){
+    for(int i=0;i<4;i++) out << (int)color.bgra[i] << " ";
+    out << std::endl;
+    return out;
+}
+
 struct TGAImage {
     enum Format { GRAYSCALE=1, RGB=3, RGBA=4 };
 

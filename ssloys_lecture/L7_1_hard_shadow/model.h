@@ -14,6 +14,7 @@ class Model
     TGAImage diffusemap{};  // diffuse color texture
     TGAImage normalmap{};   // normal map texture
     TGAImage specularmap{}; // specular map texture
+    TGAImage glowmap{};
     void load_texture(const std::string filename, const std::string suffix, TGAImage &img);
 
 public:
@@ -27,4 +28,5 @@ public:
     vec3 uv(const int iface, const int nthvert) const;
     const TGAImage &diffuse() const { return diffusemap; }
     const TGAImage &specular() const { return specularmap; }
+    const TGAImage &glow() const { return glowmap; }
 };

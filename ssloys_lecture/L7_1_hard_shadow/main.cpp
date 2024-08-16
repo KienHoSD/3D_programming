@@ -16,9 +16,9 @@ using std::string;
 using std::swap;
 using std::vector;
 
-int imageh = 800;
-int imagew = 800;
-int imaged = 800;
+int imageh = 1600;
+int imagew = 1600;
+int imaged = 1600;
 const string filename = "tgatest.tga";
 
 const TGAColor white = {255, 255, 255};
@@ -33,6 +33,7 @@ double lintensity = 1;
 double contrast = 1;
 double ambientcolor = 0; // TGAColor{5,5,5}
 double specularstrength_scale = 1.5;
+double glowscale = 10;
 double *shadowbuffer = new double[imageh * imagew];
 mat<4, 4> Projection;
 mat<4, 4> Viewport;
@@ -40,6 +41,7 @@ mat<4, 4> Modelview;
 Model *model;
 TGAImage diffusemap;
 TGAImage specularmap;
+TGAImage glowmap;
 
 #define ROUNDNUM(x) (int)(x >= .5f ? (x + 1.0f) : x)
 vec3 ROUND_VECTOR(const vec3 &vec)
@@ -182,7 +184,7 @@ struct DepthShader : public IShader
    {
       vec3 p = varying_tri.transpose() * barycentricvec;
       for (int i = 0; i < 3; i++)
-         color[i] = 255. * p.z / imaged;
+         color[i] = 255. * max<double>(p.z, 0) / imaged;
       return 0;
    }
 };
@@ -197,7 +199,7 @@ struct Shader : public IShader
    vec3 colorcoord;
 
    Shader() {}
-   Shader(mat<4,4> MShadow_transmat) : Mshadow_transform(MShadow_transmat) {}
+   Shader(mat<4, 4> MShadow_transmat) : Mshadow_transform(MShadow_transmat) {}
 
    virtual vec3 vertex(int iface, int nthvert)
    {
@@ -211,10 +213,10 @@ struct Shader : public IShader
 
    virtual bool fragment(vec3 barycentricvec, TGAColor &color)
    {
-      vec4 current_pixel_coord_lightview = Mshadow_transform * embed<4,3>(varying_tri.transpose() * barycentricvec);
-      current_pixel_coord_lightview = current_pixel_coord_lightview/current_pixel_coord_lightview[3];
-      int idx = int(current_pixel_coord_lightview[0]) + int(current_pixel_coord_lightview[1])*imagew;      
-      double shadow_strength = 0.3 + 0.7*(shadowbuffer[idx] < current_pixel_coord_lightview[2]+45);
+      vec4 current_pixel_coord_lightview = Mshadow_transform * embed<4, 3>(varying_tri.transpose() * barycentricvec);
+      current_pixel_coord_lightview = current_pixel_coord_lightview / current_pixel_coord_lightview[3];
+      int idx = int(current_pixel_coord_lightview[0]) + int(current_pixel_coord_lightview[1]) * imagew;
+      double shadow_strength = 0.3 + 0.7 * (shadowbuffer[idx] < current_pixel_coord_lightview[2] + 45);
 
       normalvector = normalvectors.transpose() * barycentricvec;
       normalvector = normalvector * contrast;
@@ -243,10 +245,11 @@ struct Shader : public IShader
 
       // find texture.
       color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
+      TGAColor glow = glowmap.get(ROUNDNUM(colorcoord.x * glowmap.width()), ROUNDNUM(colorcoord.y * glowmap.height()));
 
       for (int i = 0; i < 3; i++)
       {
-         color[i] = max<double>(0, min<double>(255, ambientcolor + color[i] * shadow_strength * (strength + specularstrength_scale * specularstrength)));
+         color[i] = max<double>(0, min<double>(255, glow[i]*glowscale + ambientcolor + color[i] * shadow_strength * (strength + specularstrength_scale * specularstrength)));
       }
       return 0;
    }
@@ -302,7 +305,9 @@ int main(int argc, char **argv)
    if (argc == 2)
       filename = argv[1];
    else
+   {
       filename = "obj/african_head/african_head.obj";
+   }
 
    double *zbuffer = new double[imageh * imagew];
    fill(zbuffer, zbuffer + imageh * imagew, -std::numeric_limits<double>::max());
@@ -311,6 +316,7 @@ int main(int argc, char **argv)
    model = new Model(filename);
    diffusemap = model->diffuse();
    specularmap = model->specular();
+   glowmap = model->glow();
 
    TGAImage *image = new TGAImage(imagew, imageh, TGAImage::RGB);
    TGAImage *depth = new TGAImage(imagew, imageh, TGAImage::GRAYSCALE);
@@ -322,7 +328,7 @@ int main(int argc, char **argv)
    viewport(imagew * 1 / 8, imageh * 1 / 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
    projection(0);
    lookat(-lightsource_direction, center, up);
-   mat<4,4> MS = Viewport*Projection*Modelview;
+   mat<4, 4> MS = Viewport * Projection * Modelview;
 
    for (int i = 0; i < model->nfaces(); i++)
    {
@@ -336,7 +342,7 @@ int main(int argc, char **argv)
    viewport(imagew * 1 / 8, imageh * 1 / 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
    projection(-1 / camera_coord.z);
    lookat(camera_coord, center, up);
-   mat<4,4> M = MS*(Viewport*Projection*Modelview).invert(); 
+   mat<4, 4> M = MS * (Viewport * Projection * Modelview).invert();
    Shader shader(M);
 
    for (int i = 0; i < model->nfaces(); i++)
