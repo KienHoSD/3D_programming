@@ -249,7 +249,7 @@ struct Shader : public IShader
 
       for (int i = 0; i < 3; i++)
       {
-         color[i] = max<double>(0, min<double>(255, glow[i]*glowscale + ambientcolor + 0 * color[i] * shadow_strength * (strength + specularstrength_scale * specularstrength)));
+         color[i] = max<double>(0, min<double>(255, glow[i]*glowscale + ambientcolor + color[i] * shadow_strength * (strength + specularstrength_scale * specularstrength)));
       }
       return 0;
    }
