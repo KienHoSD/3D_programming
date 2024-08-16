@@ -31,7 +31,8 @@ vec3 center = {0, 0, 0};
 vec3 up = {0, 1, 0};
 double lintensity = 1;
 double contrast = 1;
-double ambientcolor = 0; // TGAColor{5,5,5}
+double ambientcolor = 5; // TGAColor{5,5,5}
+double diffstrength_scale = 2;
 double specularstrength_scale = 1.5;
 double glowscale = 10;
 double *shadowbuffer = new double[imageh * imagew];
@@ -231,13 +232,13 @@ struct Shader : public IShader
       vec3 n = (B * model->normal(colorcoord)).normalized();
       vec3 l = proj<3, 4>(Projection * Modelview * embed<4, 3>(lightsource_direction)).normalized();
       vec3 r = ((n * -l * 2.) * n + l).normalized();
-      double strength = max<double>(0, (n * -l) * lintensity);
+      double diffstrength = max<double>(0, (n * -l) * lintensity);
       double specularstrength = pow(max<double>(0, r.z), specularcolor[0]);
 
-      if (strength < 0)
-         strength = 0;
-      else if (strength > 1)
-         strength = 1;
+      if (diffstrength < 0)
+         diffstrength = 0;
+      else if (diffstrength > 1)
+         diffstrength = 1;
       if (specularstrength < 0)
          specularstrength = 0;
       else if (specularstrength > 1)
@@ -247,9 +248,9 @@ struct Shader : public IShader
       color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
       TGAColor glow = glowmap.get(ROUNDNUM(colorcoord.x * glowmap.width()), ROUNDNUM(colorcoord.y * glowmap.height()));
 
-      for (int i = 0; i < 3; i++)
+      for (int i = 0; i < 4; i++)
       {
-         color[i] = max<double>(0, min<double>(255, glow[i]*glowscale + ambientcolor + color[i] * shadow_strength * (strength + specularstrength_scale * specularstrength)));
+         color[i] = max<double>(0, min<double>(255, glow[i] * glowscale + ambientcolor + color[i] * shadow_strength * (diffstrength * diffstrength_scale + specularstrength * specularstrength_scale)));
       }
       return 0;
    }
