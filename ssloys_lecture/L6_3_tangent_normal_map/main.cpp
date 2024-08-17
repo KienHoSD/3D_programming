@@ -34,7 +34,7 @@ vec3 up = {0, 1, 0};
 double intensity = 1;
 double contrast = 1;
 double ambientcolor = 5; // TGAColor{5,5,5}
-double specularstrength_scale = 0.2;
+double specularstrength_scale = 1;
 mat<4, 4> Projection;
 mat<4, 4> Viewport;
 mat<4, 4> Modelview;
@@ -163,7 +163,6 @@ mat<4, 4> lookat(vec3 eye, vec3 center, vec3 up)
       model[2][i] = z[i];
       view[i][3] = -center[i];
    }
-   // cout << model*view << endl;
    return model*view;
 }
 
@@ -212,51 +211,38 @@ void triangle(vec3 *vertices, vec3 *texturecoords, vec3 *normvecs, double *zbuff
 
          zbuffer[index] = z;
 
-         // raise contrast base on contrast
-         normalvector = normalvector.normalized() * contrast;
+         normalvector = normalvector * contrast;
+         TGAColor specularcolor = specularmap.get(colorcoord.x, colorcoord.y);
 
-         // if face the light (strength increace)
-         // raise intensity of light base on intensity
-         mat<3,3> A = mat<3,3>{texturecoords[1] - texturecoords[0], texturecoords[2] - texturecoords[0], normalvector}.transpose();
-         mat<3,3> AI = A.invert();
-         vec<3> i = AI * vec<3>{texturecoords[1] - texturecoords[0]};
-         vec<3> j = AI * vec<3>{texturecoords[2] - texturecoords[0]};
-         mat<3,3> B = mat<3,3>{i,j,normalvector}.transpose();
-         vec<3> n = (B*model.normal(colorcoord)).normalized();
-         double strength = -(n * lightsource_direction.normalized()) * intensity;
+         mat<3, 3> A = mat<3, 3>{texturecoords[1] - texturecoords[0], texturecoords[2] - texturecoords[0], normalvector}.transpose();
+         mat<3, 3> AI = A.invert();
+         vec3 i = AI * vec<3>{texturecoords[1] - texturecoords[0]};
+         vec3 j = AI * vec<3>{texturecoords[2] - texturecoords[0]};
+         mat<3, 3> B = mat<3, 3>{i, j, normalvector}.transpose();
+         vec3 n = (B * model.normal(colorcoord)).normalized();
+         vec3 l = proj<3, 4>(Projection * Modelview * embed<4, 3>(lightsource_direction)).normalized();
+         vec3 r = ((n * -l * 2.) * n + l).normalized();
+         double strength = max<double>(0, (n * -l) * intensity);
+         double specularstrength = pow(max<double>(0, r.z), specularcolor[0]);
 
-         // if strength is less than 0, handle limit of scaling color
-         // if strength greater than 1, handle limit of scaling color
          if (strength < 0)
             strength = 0;
-         if (strength > 1)
+         else if (strength > 1)
             strength = 1;
-
-         // get specular
-         vec3 uniform_l = proj<3,4>(Projection*Modelview*embed<4,3>(lightsource_direction,1));
-         TGAColor specularcolor = specularmap.get(colorcoord.x, colorcoord.y);
-         vec3 specularvec = ((n * -uniform_l * 2.) * n + uniform_l).normalized();
-         double specularstrength = pow(specularvec * camera_coord.normalized(), 5 + specularcolor[0]);
-         // double specularstrength = pow(specularvec.z, 5 + specularcolor[0]);
-
          if (specularstrength < 0)
             specularstrength = 0;
-         if (specularstrength > 1){
+         else if (specularstrength > 1)
             specularstrength = 1;
-         }
-         
 
+         // find texture.
          TGAColor color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
-         // uncomment this to see the shading more clear
-         // color = {255, 255, 255};
 
          for (int i = 0; i < 3; i++)
          {
-            color[i] *= strength;
-            color[i] = max<double>(0,(min<double>(255., color[i] + 255. * specularstrength * specularstrength_scale + ambientcolor)));
+            color[i] = max<double>(0, min<double>(255, ambientcolor + color[i] * (strength + specularstrength_scale * specularstrength)));
          }
 
-         image->set(x, y, color);
+         image->set(x,y,color);
       }
    }
 }
