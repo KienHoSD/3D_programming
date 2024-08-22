@@ -1,0 +1,8 @@
+[
+{
+  "directory": "D:/DesktopFiles/Project/3D_programming/ray_tracing/OneWeekendRT/build",
+  "command": "C:\\PROGRA~1\\MICROS~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1440~1.338\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -ID:\\DesktopFiles\\Project\\3D_programming\\ray_tracing\\OneWeekendRT\\src /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -MDd -Zi /W4 \"/we 4265\" \"/we 5204\" \"/wd 4100\" /FoCMakeFiles\\inOneWeekend.dir\\src\\InOneWeekend\\main.cc.obj /FdTARGET_COMPILE_PDB /FS -c D:\\DesktopFiles\\Project\\3D_programming\\ray_tracing\\OneWeekendRT\\src\\InOneWeekend\\main.cc",
+  "file": "D:\\DesktopFiles\\Project\\3D_programming\\ray_tracing\\OneWeekendRT\\src\\InOneWeekend\\main.cc",
+  "output": "CMakeFiles\\inOneWeekend.dir\\src\\InOneWeekend\\main.cc.obj"
+}
+]

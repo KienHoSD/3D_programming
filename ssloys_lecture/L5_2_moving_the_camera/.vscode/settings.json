@@ -1,8 +1,0 @@
-{
-  "files.associations": {
-    "*.sage": "python",
-    "*.cpp": "cpp",
-    "vector": "cpp",
-    "iostream": "cpp"
-  }
-}

@@ -1,0 +1,12 @@
+{
+  "files.associations": {
+    "*.sage": "python",
+    "*.cpp": "cpp",
+    "iostream": "cpp",
+    "memory": "cpp",
+    "vector": "cpp",
+    "xstring": "cpp",
+    "limits": "cpp",
+    "xutility": "cpp"
+  }
+}

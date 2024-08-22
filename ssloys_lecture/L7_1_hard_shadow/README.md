@@ -1,2 +1,2 @@
-![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L7_1_hard_shadow/test.jpg)
-![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L7_1_hard_shadow/depth.jpg)
+![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L7_1_hard_shadow/img/test.jpg)
+![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L7_1_hard_shadow/img/depth.jpg)

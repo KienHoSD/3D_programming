@@ -1,1 +1,1 @@
-![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L6_1_normal_map/tga.jpg)
+![](https://github.com/KienHoSD/3D_programming/blob/main/ssloys_lecture/L6_1_normal_map/img/tga.jpg)
