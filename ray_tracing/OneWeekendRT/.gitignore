@@ -1,4 +1,5 @@
 # Git Ignore Rules for raytracing.github.io
 
+.vscode/
 build/
 /*.ppm
