@@ -260,6 +260,7 @@ int main(int argc, char **argv)
    else
    {
       filename = "obj/diablo3_pose/diablo3_pose.obj";
+      // filename = "obj/african_head/african_head.obj";
       // filename = "obj/skull/skull.obj";
    }
 
