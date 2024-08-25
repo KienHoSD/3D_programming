@@ -275,7 +275,7 @@ int main(int argc, char **argv)
    vec3 zvertices[3];
 
    viewport(imagew/ 8, imageh/ 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
-   projection(-1 / (camera_coord-center).z);
+   projection(-1 / (camera_coord-center).norm());
    lookat(camera_coord, center, up);
 
    for (int i = 0; i < model->nfaces(); i++)
