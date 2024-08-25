@@ -26,7 +26,7 @@ const TGAColor red = {255, 0, 0};
 const TGAColor green = {0, 255, 0};
 const TGAColor blue = {0, 0, 255};
 vec3 lightsource_direction = {-1, -1, 0}; // will be normalized, show light source direction
-vec3 camera_coord = {0, 0, 3};            // coordinates of the camera
+vec3 camera_coord = {1.2,-.8,3};            // coordinates of the camera
 vec3 center = {0, 0, 0};                  // camera look at center (default: origin {0,0,0})
 vec3 up = {0, 1, 0};                      // up direction of camera (y axis of camera)
 
@@ -193,72 +193,6 @@ struct ZShader : public IShader{
    }
 };
 
-struct Shader : public IShader
-{
-   mat<3, 3> texturecoords;
-   mat<3, 3> normalvectors;
-   mat<3, 3> varying_tri;
-   mat<4, 4> Mshadow_transform; // transform view screen vertices to light screen vertices.
-   vec3 normalvector;
-   vec3 colorcoord;
-
-   Shader() {}
-   Shader(mat<4, 4> MShadow_transmat) : Mshadow_transform(MShadow_transmat) {}
-
-   virtual vec3 vertex(int iface, int nthvert)
-   {
-      texturecoords[nthvert] = model->uv(iface, nthvert);
-      normalvectors[nthvert] = model->normal(iface, nthvert);
-      vec4 gl_vertex = embed<4, 3>(model->vert(iface, nthvert) * model_scale);
-      gl_vertex = Viewport * Projection * Modelview * gl_vertex;
-      varying_tri[nthvert] = ROUND_VECTOR(proj<3, 4>(gl_vertex / gl_vertex[3]));
-      return varying_tri[nthvert];
-   }
-
-   virtual bool fragment(vec3 barycentricvec, TGAColor &color)
-   {
-      vec4 current_pixel_coord_lightview = Mshadow_transform * embed<4, 3>(varying_tri.transpose() * barycentricvec);
-      current_pixel_coord_lightview = current_pixel_coord_lightview / current_pixel_coord_lightview[3];
-      int idx = int(current_pixel_coord_lightview[0]) + int(current_pixel_coord_lightview[1]) * imagew;
-      double shadowstrength = shadowstrength_scale + (1 - shadowstrength_scale) * (zbuffer[idx] < current_pixel_coord_lightview[2] + 45);
-
-      normalvector = normalvectors.transpose() * barycentricvec;
-      normalvector = normalvector * contrast;
-      colorcoord = texturecoords.transpose() * barycentricvec;
-      TGAColor specularcolor = specularmap.get(colorcoord.x, colorcoord.y);
-
-      mat<3, 3> A = mat<3, 3>{texturecoords[1] - texturecoords[0], texturecoords[2] - texturecoords[0], normalvector}.transpose();
-      mat<3, 3> AI = A.invert();
-      vec3 i = AI * vec<3>{texturecoords[1] - texturecoords[0]};
-      vec3 j = AI * vec<3>{texturecoords[2] - texturecoords[0]};
-      mat<3, 3> B = mat<3, 3>{i, j, normalvector}.transpose();
-      vec3 n = (B * model->normal(colorcoord)).normalized();
-      vec3 l = proj<3, 4>(Projection * Modelview * embed<4, 3>(lightsource_direction)).normalized();
-      vec3 r = ((n * -l * 2.) * n + l).normalized();
-      double diffstrength = max<double>(0, (n * -l) * lintensity);
-      double specularstrength = pow(max<double>(0, r.z), specularcolor[0]);
-
-      if (diffstrength < 0)
-         diffstrength = 0;
-      else if (diffstrength > 1)
-         diffstrength = 1;
-      if (specularstrength < 0)
-         specularstrength = 0;
-      else if (specularstrength > 1)
-         specularstrength = 1;
-
-      // find texture.
-      color = diffusemap.get(ROUNDNUM(colorcoord.x * diffusemap.width()), ROUNDNUM(colorcoord.y * diffusemap.height()));
-      TGAColor glow = glowmap.get(ROUNDNUM(colorcoord.x * glowmap.width()), ROUNDNUM(colorcoord.y * glowmap.height()));
-
-      for (int i = 0; i < 4; i++)
-      {
-         color[i] = max<double>(0, min<double>(255, glow[i] * glow_scale + ambientcolor + color[i] * shadowstrength * (diffstrength * diffstrength_scale + specularstrength * specularstrength_scale)));
-      }
-      return 0;
-   }
-};
-
 void triangle(vec3 *vertices, IShader &shader, double *zbuffer, TGAImage *image)
 {
    double imgw = (double)image->width();
@@ -307,7 +241,7 @@ double max_elevation_angle(double* zbuffer, vec2 p, vec2 dir){
    double max_angle = 0;
    for(int t=0.;t<max_distant;t+=1.){
       vec2 cur = p + dir*t;
-      if(zbuffer[int(cur.x) + int(cur.y) * imagew] < 1e-5 || cur.x >= imagew || cur.x < 0 || cur.y >= imageh || cur.y < 0){
+      if(cur.x >= imagew || cur.x < 0 || cur.y >= imageh || cur.y < 0){
          return max_angle;
       } // black pixel appear or out of image then stop
       double elevation = zbuffer[int(cur.x) + int(cur.y)*imagew] - zbuffer[int(p.x) + int(p.y) * imagew];
@@ -333,9 +267,6 @@ int main(int argc, char **argv)
    fill(zbuffer, zbuffer + imageh * imagew, -std::numeric_limits<double>::max());
 
    model = new Model(filename);
-   diffusemap = model->diffuse();
-   specularmap = model->specular();
-   glowmap = model->glow();
 
    TGAImage *image = new TGAImage(imagew, imageh, TGAImage::RGB);
    ZShader zshader;
@@ -363,7 +294,7 @@ int main(int argc, char **argv)
             total += M_PI/2 - max_elevation_angle(zbuffer,vec2{x,y},vec2{cos(i),sin(i)});
          }
          total /= (M_PI/2)*8; // get the average angle of all direction
-         image->set(x,y,TGAColor{(unsigned char)(total*255.),(unsigned char)(total*255.),(unsigned char)(total*255.)});
+         image->set(x,y,TGAColor{u_char(total*255),u_char(total*255),u_char(total*255)});
       }
    }
 
