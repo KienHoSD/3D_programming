@@ -19,34 +19,35 @@ using std::vector;
 int imageh = 1600;
 int imagew = 1600;
 int imaged = 1600;
+double max_distant = sqrt(imagew*imagew + imageh*imageh); // the max distant of 2 different pixel of the image (pixel unit)
 const string filename = "tgatest.tga";
 const TGAColor white = {255, 255, 255};
 const TGAColor red = {255, 0, 0};
 const TGAColor green = {0, 255, 0};
 const TGAColor blue = {0, 0, 255};
 vec3 lightsource_direction = {-1, -1, 0}; // will be normalized, show light source direction
-vec3 camera_coord = {0, 0, 3}; // coordinates of the camera 
-vec3 center = {0, 0, 0};   // camera look at center (default: origin {0,0,0})
-vec3 up = {0, 1, 0};       // up direction of camera (y axis of camera)
+vec3 camera_coord = {0, 0, 3};            // coordinates of the camera
+vec3 center = {0, 0, 0};                  // camera look at center (default: origin {0,0,0})
+vec3 up = {0, 1, 0};                      // up direction of camera (y axis of camera)
 
 // ^ y        ^ -z (-z not z)
-// |        / 
-// |      / 
+// |        /
+// |      /
 // |    /
 // |  /
 // |/
 // 0------------> x
 
-double lintensity = 1; // strength of the light source
-double contrast = 1; // scaling the normal vector to contrast 
-double ambientcolor = 5; // constant ambient color TGA{5,5,5}
-double model_scale = 5; // scale all the vertex to model_scale
-double diffstrength_scale = 2; // can be varies, should be from 1 to 2
+double lintensity = 1;               // strength of the light source
+double contrast = 1;                 // scaling the normal vector to contrast
+double ambientcolor = 5;             // constant ambient color TGA{5,5,5}
+double model_scale = 1;              // scale all the vertex to model_scale
+double diffstrength_scale = 2;       // can be varies, should be from 1 to 2
 double specularstrength_scale = 1.5; // can be varies, should be from 0 to 2
-double glow_scale = 10; // can be varies, should be 1 to 10
-double shadowstrength_scale = 0.5; // from 0 to 1 (lower means darker shadow, 1 means no shadow)
+double glow_scale = 10;              // can be varies, should be 1 to 10
+double shadowstrength_scale = 0.5;   // from 0 to 1 (lower means darker shadow, 1 means no shadow)
 
-double *shadowbuffer = new double[imageh * imagew];
+double *zbuffer = new double[imageh * imagew];
 mat<4, 4> Projection;
 mat<4, 4> Viewport;
 mat<4, 4> Modelview;
@@ -174,18 +175,11 @@ struct IShader
    virtual bool fragment(vec3 bar, TGAColor &color) = 0;
 };
 
-struct DepthShader : public IShader
-{
-   mat<3, 3> texturecoords;
-   mat<3, 3> normalvectors;
+struct ZShader : public IShader{
    mat<3, 3> varying_tri;
-   vec3 normalvector;
-   vec3 colorcoord;
 
    virtual vec3 vertex(int iface, int nthvert)
    {
-      texturecoords[nthvert] = model->uv(iface, nthvert);
-      normalvectors[nthvert] = model->normal(iface, nthvert);
       vec4 gl_vertex = embed<4, 3>(model->vert(iface, nthvert) * model_scale);
       gl_vertex = Viewport * Projection * Modelview * gl_vertex;
       varying_tri[nthvert] = ROUND_VECTOR(proj<3, 4>(gl_vertex / gl_vertex[3]));
@@ -194,9 +188,7 @@ struct DepthShader : public IShader
 
    virtual bool fragment(vec3 barycentricvec, TGAColor &color)
    {
-      vec3 p = varying_tri.transpose() * barycentricvec;
-      for (int i = 0; i < 3; i++)
-         color[i] = 255. * max<double>(p.z, 0) / imaged;
+      // color = {0,0,0}; // make the image black. No need to, since its already a black image.
       return 0;
    }
 };
@@ -228,7 +220,7 @@ struct Shader : public IShader
       vec4 current_pixel_coord_lightview = Mshadow_transform * embed<4, 3>(varying_tri.transpose() * barycentricvec);
       current_pixel_coord_lightview = current_pixel_coord_lightview / current_pixel_coord_lightview[3];
       int idx = int(current_pixel_coord_lightview[0]) + int(current_pixel_coord_lightview[1]) * imagew;
-      double shadowstrength = shadowstrength_scale + (1-shadowstrength_scale) * (shadowbuffer[idx] < current_pixel_coord_lightview[2] + 45);
+      double shadowstrength = shadowstrength_scale + (1 - shadowstrength_scale) * (zbuffer[idx] < current_pixel_coord_lightview[2] + 45);
 
       normalvector = normalvectors.transpose() * barycentricvec;
       normalvector = normalvector * contrast;
@@ -311,6 +303,21 @@ void triangle(vec3 *vertices, IShader &shader, double *zbuffer, TGAImage *image)
    }
 }
 
+double max_elevation_angle(double* zbuffer, vec2 p, vec2 dir){
+   double max_angle = 0;
+   for(int t=0.;t<max_distant;t+=1.){
+      vec2 cur = p + dir*t;
+      if(zbuffer[int(cur.x) + int(cur.y) * imagew] < 1e-5 || cur.x >= imagew || cur.x < 0 || cur.y >= imageh || cur.y < 0){
+         return max_angle;
+      } // black pixel appear or out of image then stop
+      double elevation = zbuffer[int(cur.x) + int(cur.y)*imagew] - zbuffer[int(p.x) + int(p.y) * imagew];
+      double distant = (cur-p).norm();
+      if(distant < 1.) continue; // avoid divide by 0
+      max_angle = max<double>(max_angle, atanf(elevation/distant));
+   }
+   return max_angle;
+}
+
 int main(int argc, char **argv)
 {
    string filename;
@@ -318,13 +325,12 @@ int main(int argc, char **argv)
       filename = argv[1];
    else
    {
-      // filename = "obj/diablo3_pose/diablo3_pose.obj";
-      filename = "obj/skull/skull.obj";
+      filename = "obj/diablo3_pose/diablo3_pose.obj";
+      // filename = "obj/skull/skull.obj";
    }
 
    double *zbuffer = new double[imageh * imagew];
    fill(zbuffer, zbuffer + imageh * imagew, -std::numeric_limits<double>::max());
-   fill(shadowbuffer, shadowbuffer + imageh * imagew, -std::numeric_limits<double>::max());
 
    model = new Model(filename);
    diffusemap = model->diffuse();
@@ -332,43 +338,36 @@ int main(int argc, char **argv)
    glowmap = model->glow();
 
    TGAImage *image = new TGAImage(imagew, imageh, TGAImage::RGB);
-   TGAImage *depth = new TGAImage(imagew, imageh, TGAImage::GRAYSCALE);
-   DepthShader depthshader;
+   ZShader zshader;
 
-   vec3 vertices[3];
-   vec3 depthvertices[3];
+   vec3 zvertices[3];
 
-   viewport(imagew * 1 / 8, imageh * 1 / 8, imagew * 1 / 4, imageh * 1 / 4, imaged);
-   projection(0);
-   lookat(-lightsource_direction, center, up);
-   mat<4, 4> MS = Viewport * Projection * Modelview;
+   viewport(imagew/ 8, imageh/ 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
+   projection(-1 / (camera_coord-center).z);
+   lookat(camera_coord, center, up);
 
    for (int i = 0; i < model->nfaces(); i++)
    {
       for (int j = 0; j < 3; j++)
       {
-         depthvertices[j] = depthshader.vertex(i, j);
+         zvertices[j] = zshader.vertex(i, j);
       }
-      triangle(depthvertices, depthshader, shadowbuffer, depth);
+      triangle(zvertices, zshader, zbuffer, image);
    }
 
-   viewport(imagew * 1 / 8, imageh * 1 / 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
-   projection(-1 / camera_coord.z);
-   lookat(camera_coord, center, up);
-   mat<4, 4> M = MS * (Viewport * Projection * Modelview).invert();
-   Shader shader(M);
-
-   for (int i = 0; i < model->nfaces(); i++)
-   {
-      for (int j = 0; j < 3; j++)
-      {
-         vertices[j] = shader.vertex(i, j);
+   for (double x=0; x < imagew; x++){
+      for(double y=0; y< imageh; y++){
+         double total = 0;
+         if(zbuffer[int(x)+int(y)*imagew] < 1e-5) continue; // its already a black pixel, no need to calculate
+         for(double i=0; i < 2*M_PI - 1e-4; i+=M_PI/4){ // we only get 8 direction from this for loop
+            total += M_PI/2 - max_elevation_angle(zbuffer,vec2{x,y},vec2{cos(i),sin(i)});
+         }
+         total /= (M_PI/2)*8; // get the average angle of all direction
+         image->set(x,y,TGAColor{(unsigned char)(total*255.),(unsigned char)(total*255.),(unsigned char)(total*255.)});
       }
-      triangle(vertices, shader, zbuffer, image);
    }
 
    image->write_tga_file("test.tga");
-   depth->write_tga_file("depth.tga");
    delete[] zbuffer;
    delete model;
    delete image;
