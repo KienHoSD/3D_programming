@@ -4,6 +4,7 @@
 #include "algorithm"
 #include "string.h"
 #include "iostream"
+#include <omp.h>
 
 using std::cerr;
 using std::cin;
@@ -18,15 +19,15 @@ using std::vector;
 
 int imageh = 1600;
 int imagew = 1600;
-int imaged = 1600;
-double max_distant = sqrt(imagew*imagew + imageh*imageh); // the max distant of 2 different pixel of the image (pixel unit)
+int imaged = 255;
+double max_distant = sqrt(imagew * imagew + imageh * imageh); // the max distant of 2 different pixel of the image (pixel unit)
 const string filename = "tgatest.tga";
 const TGAColor white = {255, 255, 255};
 const TGAColor red = {255, 0, 0};
 const TGAColor green = {0, 255, 0};
 const TGAColor blue = {0, 0, 255};
 vec3 lightsource_direction = {-1, -1, 0}; // will be normalized, show light source direction
-vec3 camera_coord = {1.2,-.8,3};            // coordinates of the camera
+vec3 camera_coord = {1, 1, 3};            // coordinates of the camera
 vec3 center = {0, 0, 0};                  // camera look at center (default: origin {0,0,0})
 vec3 up = {0, 1, 0};                      // up direction of camera (y axis of camera)
 
@@ -47,7 +48,8 @@ double specularstrength_scale = 1.5; // can be varies, should be from 0 to 2
 double glow_scale = 10;              // can be varies, should be 1 to 10
 double shadowstrength_scale = 0.5;   // from 0 to 1 (lower means darker shadow, 1 means no shadow)
 
-double *zbuffer = new double[imageh * imagew];
+/*double *zbuffer = new double[imageh * imagew];*/
+vector<double> zbuffer(imageh * imagew, -std::numeric_limits<double>::max());
 mat<4, 4> Projection;
 mat<4, 4> Viewport;
 mat<4, 4> Modelview;
@@ -175,7 +177,8 @@ struct IShader
    virtual bool fragment(vec3 bar, TGAColor &color) = 0;
 };
 
-struct ZShader : public IShader{
+struct ZShader : public IShader
+{
    mat<3, 3> varying_tri;
 
    virtual vec3 vertex(int iface, int nthvert)
@@ -193,7 +196,7 @@ struct ZShader : public IShader{
    }
 };
 
-void triangle(vec3 *vertices, IShader &shader, double *zbuffer, TGAImage *image)
+void triangle(vec3 *vertices, IShader &shader, vector<double> &zbuffer, TGAImage *image)
 {
    double imgw = (double)image->width();
    double imgh = (double)image->height();
@@ -237,19 +240,22 @@ void triangle(vec3 *vertices, IShader &shader, double *zbuffer, TGAImage *image)
    }
 }
 
-double max_elevation_angle(double* zbuffer, vec2 p, vec2 dir){
-   double max_angle = 0;
-   for(int t=0.;t<max_distant;t+=1.){
-      vec2 cur = p + dir*t;
-      if(cur.x >= imagew || cur.x < 0 || cur.y >= imageh || cur.y < 0){
-         return max_angle;
-      } // black pixel appear or out of image then stop
-      double elevation = zbuffer[int(cur.x) + int(cur.y)*imagew] - zbuffer[int(p.x) + int(p.y) * imagew];
-      double distant = (cur-p).norm();
-      if(distant < 1.) continue; // avoid divide by 0
-      max_angle = max<double>(max_angle, atanf(elevation/distant));
+float max_elevation_angle(const vector<double> &zbuffer, vec2 p, vec2 dir)
+{
+   double maxangle = 0;
+   for (double t = 0.; t < 1000.; t += 1.)
+   {
+      vec2 cur = p + dir * t;
+      if (cur.x >= imagew || cur.y >= imageh || cur.x < 0 || cur.y < 0)
+         return maxangle;
+
+      double distance = (p - cur).norm();
+      if (distance < 1.)
+         continue;
+      double elevation = zbuffer[int(cur.x) + int(cur.y) * imagew] - zbuffer[int(p.x) + int(p.y) * imagew];
+      maxangle = std::max<double>(maxangle, atanf64(elevation / distance));
    }
-   return max_angle;
+   return maxangle;
 }
 
 int main(int argc, char **argv)
@@ -259,13 +265,9 @@ int main(int argc, char **argv)
       filename = argv[1];
    else
    {
+      /*filename = "obj/african_head/african_head.obj";*/
       filename = "obj/diablo3_pose/diablo3_pose.obj";
-      // filename = "obj/african_head/african_head.obj";
-      // filename = "obj/skull/skull.obj";
    }
-
-   double *zbuffer = new double[imageh * imagew];
-   fill(zbuffer, zbuffer + imageh * imagew, -std::numeric_limits<double>::max());
 
    model = new Model(filename);
 
@@ -274,8 +276,8 @@ int main(int argc, char **argv)
 
    vec3 zvertices[3];
 
-   viewport(imagew/ 8, imageh/ 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
-   projection(-1 / (camera_coord-center).norm());
+   viewport(imagew / 8, imageh / 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
+   projection(-1 / (camera_coord - center).norm());
    lookat(camera_coord, center, up);
 
    for (int i = 0; i < model->nfaces(); i++)
@@ -287,20 +289,21 @@ int main(int argc, char **argv)
       triangle(zvertices, zshader, zbuffer, image);
    }
 
-   for (double x=0; x < imagew; x++){
-      for(double y=0; y< imageh; y++){
-         double total = 0;
-         if(zbuffer[int(x)+int(y)*imagew] < 1e-5) continue; // its already a black pixel, no need to calculate
-         for(double i=0; i < 2*M_PI - 1e-4; i+=M_PI/4){ // we only get 8 direction from this for loop
-            total += M_PI/2 - max_elevation_angle(zbuffer,vec2{x,y},vec2{cos(i),sin(i)});
-         }
-         total /= (M_PI/2)*8; // get the average angle of all direction
-         image->set(x,y,TGAColor{u_char(total*255),u_char(total*255),u_char(total*255)});
+  #pragma omp parallel for
+  for (int y = 0; y < imageh; y++) {
+      for (int x = 0; x < imagew; x++) {
+          if (zbuffer[x + y * imagew] < -1e5)
+              continue; // it's already a black pixel, no need to calculate
+          double total = 0;
+          for (double i = 0; i < 2 * M_PI - 1e-4; i += M_PI / 4) {
+              total += M_PI / 2 - max_elevation_angle(zbuffer, vec2{static_cast<double>(x), static_cast<double>(y)}, vec2{cos(i), sin(i)});
+          }
+          total /= (M_PI / 2) * 8; // get the average angle of all directions
+          image->set(x, y, TGAColor{static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255)});
       }
-   }
+  }
 
    image->write_tga_file("test.tga");
-   delete[] zbuffer;
    delete model;
    delete image;
    return 0;
