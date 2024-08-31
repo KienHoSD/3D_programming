@@ -173,20 +173,17 @@ void lookat(vec3 eye, vec3 center, vec3 up)
 
 struct IShader
 {
-   virtual vec3 vertex(int iface, int nthvert) = 0;
+   virtual void vertex(int iface, int nthvert, vec3 &clip_vert) = 0;
    virtual bool fragment(vec3 bar, TGAColor &color) = 0;
 };
 
 struct ZShader : public IShader
 {
-   mat<3, 3> varying_tri;
-
-   virtual vec3 vertex(int iface, int nthvert)
+   virtual void vertex(int iface, int nthvert, vec3 &clip_vert)
    {
       vec4 gl_vertex = embed<4, 3>(model->vert(iface, nthvert) * model_scale);
       gl_vertex = Viewport * Projection * Modelview * gl_vertex;
-      varying_tri[nthvert] = ROUND_VECTOR(proj<3, 4>(gl_vertex / gl_vertex[3]));
-      return varying_tri[nthvert];
+      clip_vert = ROUND_VECTOR(proj<3, 4>(gl_vertex / gl_vertex[3]));
    }
 
    virtual bool fragment(vec3 barycentricvec, TGAColor &color)
@@ -198,55 +195,55 @@ struct ZShader : public IShader
 
 void triangle(vec3 *vertices, IShader &shader, vector<double> &zbuffer, TGAImage *image)
 {
-   vec2 bboxmin{image->width() - 1, image->height() - 1};
-   vec2 bboxmax{0, 0};
-   vec2 clamp{image->width() - 1, image->height() - 1};
+   int bboxmin[2] = {image->width() - 1, image->height() - 1};
+   int bboxmax[2] = {0, 0};
+   int clamp[2] = {image->width() - 1, image->height() - 1};
    for (int i = 0; i < 3; i++)
    {
       for (int j = 0; j < 2; j++)
       {
-         bboxmin[j] = std::max(0.0, std::min(bboxmin[j], vertices[i][j]));
-         bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], vertices[i][j]));
+         bboxmin[j] = std::max(0, std::min(bboxmin[j], static_cast<int>(vertices[i][j])));
+         bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], static_cast<int>(vertices[i][j])));
       }
    }
-   vec2 P;
-   for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
+#pragma omp parallel for
+   for (int x = max(bboxmin[0], 0); x <= min(bboxmax[0], imagew - 1); x++)
    {
-      for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
+      for (int y = max(bboxmin[1], 0); y <= min(bboxmax[1], imageh - 1); y++)
       {
-         vec3 bc_screen = barycentric(P, vertices);
-         if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+         vec3 barycentric_screen = barycentric({static_cast<double>(x), static_cast<double>(y)}, vertices);
+         if (barycentric_screen.x < 0 || barycentric_screen.y < 0 || barycentric_screen.z < 0)
             continue;
          double z = 0;
          for (int i = 0; i < 3; i++)
-            z += vertices[i][2] * bc_screen[i];
-         int idx = int(P.x + P.y * image->width());
+            z += vertices[i][2] * barycentric_screen[i];
+         int idx = int(x + y * image->width());
          if (zbuffer[idx] < z)
          {
             TGAColor color;
-            if (shader.fragment(bc_screen, color))
+            if (shader.fragment(barycentric_screen, color))
             {
                cerr << "error";
                abort();
             }
             zbuffer[idx] = z;
-            image->set(P.x, P.y, color);
+            image->set(x, y, color);
          }
       }
    }
 }
 
-float max_elevation_angle(const vector<double> &zbuffer, vec2 p, vec2 dir)
+double max_elevation_angle(const vector<double> &zbuffer, vec2 p, vec2 dir)
 {
    double maxangle = 0;
-   for (double t = 0.; t < max_distant; t += 1.)
+   for (int t = 0; t < 1000; t++)
    {
       vec2 cur = p + dir * t;
       if (cur.x >= imagew || cur.y >= imageh || cur.x < 0 || cur.y < 0)
          return maxangle;
 
       double distance = (p - cur).norm();
-      if (distance < 1.)
+      if (distance < 1.f)
          continue;
       double elevation = zbuffer[int(cur.x) + int(cur.y) * imagew] - zbuffer[int(p.x) + int(p.y) * imagew];
       maxangle = std::max<double>(maxangle, atanf64(elevation / distance));
@@ -269,25 +266,24 @@ int main(int argc, char **argv)
    TGAImage *image = new TGAImage(imagew, imageh, TGAImage::RGB);
    ZShader zshader;
 
-   vec3 zvertices[3];
-
    viewport(imagew / 8, imageh / 8, imagew * 3 / 4, imageh * 3 / 4, imaged);
    projection(-1 / (camera_coord - center).norm());
    lookat(camera_coord, center, up);
 
    for (int i = 0; i < model->nfaces(); i++)
    {
+      vec3 clip_vert[3];
       for (int j = 0; j < 3; j++)
       {
-         zvertices[j] = zshader.vertex(i, j);
+         zshader.vertex(i, j, clip_vert[j]);
       }
-      triangle(zvertices, zshader, zbuffer, image);
+      triangle(clip_vert, zshader, zbuffer, image);
    }
 
 #pragma omp parallel for
-   for (int y = 0; y < imageh; y++)
+   for (int x = 0; x < imagew; x++)
    {
-      for (int x = 0; x < imagew; x++)
+      for (int y = 0; y < imageh; y++)
       {
          if (zbuffer[x + y * imagew] < -1e5)
             continue; // it's already a black pixel, no need to calculate

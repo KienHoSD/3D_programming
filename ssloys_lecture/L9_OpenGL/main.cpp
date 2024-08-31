@@ -9,8 +9,6 @@ const int SCREEN_HEIGHT = 1024;
 float camera[]           = {.6,0,1};
 const float light0_position[4] = {1,1,1,0};
 
-using std::cout;
-
 void render_scene(void) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glLoadIdentity();
@@ -33,7 +31,6 @@ void change_size(int w, int h) {
 	glOrtho(-1,1,-1,1,-1,8);
 	glMatrixMode(GL_MODELVIEW);
 }
-
 
 int main(int argc, char **argv) {
 	glutInit(&argc, argv);
