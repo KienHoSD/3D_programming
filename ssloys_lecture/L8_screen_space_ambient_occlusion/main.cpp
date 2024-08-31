@@ -17,8 +17,8 @@ using std::string;
 using std::swap;
 using std::vector;
 
-int imageh = 1600;
 int imagew = 1600;
+int imageh = 1600;
 int imaged = 255;
 double max_distant = sqrt(imagew * imagew + imageh * imageh); // the max distant of 2 different pixel of the image (pixel unit)
 const string filename = "tgatest.tga";
@@ -49,7 +49,7 @@ double glow_scale = 10;              // can be varies, should be 1 to 10
 double shadowstrength_scale = 0.5;   // from 0 to 1 (lower means darker shadow, 1 means no shadow)
 
 /*double *zbuffer = new double[imageh * imagew];*/
-vector<double> zbuffer(imageh * imagew, -std::numeric_limits<double>::max());
+vector<double> zbuffer(imageh *imagew, -std::numeric_limits<double>::max());
 mat<4, 4> Projection;
 mat<4, 4> Viewport;
 mat<4, 4> Modelview;
@@ -67,7 +67,7 @@ vec3 ROUND_VECTOR(const vec3 &vec)
    return ret;
 }
 
-void draw_line(int x0, int y0, int x1, int y1, TGAImage *image, TGAImage *diffuse, const TGAColor &color)
+void draw_line(int x0, int y0, int x1, int y1, TGAImage *image, const TGAImage *diffuse, const TGAColor &color)
 {
    if (x0 > x1)
    {
@@ -198,44 +198,40 @@ struct ZShader : public IShader
 
 void triangle(vec3 *vertices, IShader &shader, vector<double> &zbuffer, TGAImage *image)
 {
-   double imgw = (double)image->width();
-   double imgh = (double)image->height();
-
-   vec2 boundmax = {0, 0};
-   vec2 boundmin = {imgw, imgh};
-
+   vec2 bboxmin{image->width() - 1, image->height() - 1};
+   vec2 bboxmax{0, 0};
+   vec2 clamp{image->width() - 1, image->height() - 1};
    for (int i = 0; i < 3; i++)
    {
-      boundmax.x = (double)min(imgw, (double)max(boundmax.x, vertices[i].x));
-      boundmax.y = (double)min(imgh, (double)max(boundmax.y, vertices[i].y));
-
-      boundmin.x = (double)max((double)0, min(boundmin.x, vertices[i].x));
-      boundmin.y = (double)max((double)0, min(boundmin.y, vertices[i].y));
-   }
-   for (double x = boundmin.x; x < boundmax.x; x++)
-   {
-      for (double y = boundmin.y; y < boundmax.y; y++)
+      for (int j = 0; j < 2; j++)
       {
-         vec2 P = {x, y};
-         vec3 barycentricvec = barycentric(P, vertices);
-
+         bboxmin[j] = std::max(0.0, std::min(bboxmin[j], vertices[i][j]));
+         bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], vertices[i][j]));
+      }
+   }
+   vec2 P;
+   for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
+   {
+      for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
+      {
+         vec3 bc_screen = barycentric(P, vertices);
+         if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+            continue;
          double z = 0;
          for (int i = 0; i < 3; i++)
-            z += barycentricvec[i] * vertices[i][2];
-
-         // check zbuffer soon as possible
-         int index = x + y * imgw;
-         if (index < 0 || index >= imageh * imagew || barycentricvec.x < 0 || barycentricvec.y < 0 || barycentricvec.z < 0 || zbuffer[index] >= z)
-            continue;
-
-         zbuffer[index] = z;
-         TGAColor color;
-         if (shader.fragment(barycentricvec, color))
+            z += vertices[i][2] * bc_screen[i];
+         int idx = int(P.x + P.y * image->width());
+         if (zbuffer[idx] < z)
          {
-            cerr << "error";
-            abort();
+            TGAColor color;
+            if (shader.fragment(bc_screen, color))
+            {
+               cerr << "error";
+               abort();
+            }
+            zbuffer[idx] = z;
+            image->set(P.x, P.y, color);
          }
-         image->set(x, y, color);
       }
    }
 }
@@ -243,7 +239,7 @@ void triangle(vec3 *vertices, IShader &shader, vector<double> &zbuffer, TGAImage
 float max_elevation_angle(const vector<double> &zbuffer, vec2 p, vec2 dir)
 {
    double maxangle = 0;
-   for (double t = 0.; t < 1000.; t += 1.)
+   for (double t = 0.; t < max_distant; t += 1.)
    {
       vec2 cur = p + dir * t;
       if (cur.x >= imagew || cur.y >= imageh || cur.x < 0 || cur.y < 0)
@@ -265,7 +261,6 @@ int main(int argc, char **argv)
       filename = argv[1];
    else
    {
-      /*filename = "obj/african_head/african_head.obj";*/
       filename = "obj/diablo3_pose/diablo3_pose.obj";
    }
 
@@ -289,19 +284,22 @@ int main(int argc, char **argv)
       triangle(zvertices, zshader, zbuffer, image);
    }
 
-  #pragma omp parallel for
-  for (int y = 0; y < imageh; y++) {
-      for (int x = 0; x < imagew; x++) {
-          if (zbuffer[x + y * imagew] < -1e5)
-              continue; // it's already a black pixel, no need to calculate
-          double total = 0;
-          for (double i = 0; i < 2 * M_PI - 1e-4; i += M_PI / 4) {
-              total += M_PI / 2 - max_elevation_angle(zbuffer, vec2{static_cast<double>(x), static_cast<double>(y)}, vec2{cos(i), sin(i)});
-          }
-          total /= (M_PI / 2) * 8; // get the average angle of all directions
-          image->set(x, y, TGAColor{static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255)});
+#pragma omp parallel for
+   for (int y = 0; y < imageh; y++)
+   {
+      for (int x = 0; x < imagew; x++)
+      {
+         if (zbuffer[x + y * imagew] < -1e5)
+            continue; // it's already a black pixel, no need to calculate
+         double total = 0;
+         for (double i = 0; i < 2 * M_PI - 1e-4; i += M_PI / 4)
+         {
+            total += M_PI / 2 - max_elevation_angle(zbuffer, vec2{static_cast<double>(x), static_cast<double>(y)}, vec2{cos(i), sin(i)});
+         }
+         total /= (M_PI / 2) * 8; // get the average angle of all directions
+         image->set(x, y, TGAColor{static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255), static_cast<unsigned char>(total * 255)});
       }
-  }
+   }
 
    image->write_tga_file("test.tga");
    delete model;
